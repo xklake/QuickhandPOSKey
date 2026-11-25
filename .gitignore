@@ -5,6 +5,7 @@
 *.suo
 packages/
 TestResults/
+Output/
 # Private signing material and customer authorization data never enter Git.
 *.pfx
 *.p12

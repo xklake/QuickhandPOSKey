@@ -16,7 +16,11 @@ namespace KeyGenerator
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new KeyGenerator());
+            using (var running = new System.Threading.Mutex(false, @"Local\QuickhandPOS-LegacyKeyGenerator"))
+            {
+                Application.Run(new KeyGenerator());
+                GC.KeepAlive(running);
+            }
         }
     }
 }

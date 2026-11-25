@@ -1,10 +1,11 @@
 param(
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
-    [string]$CompilerPath = ''
+    [string]$CompilerPath = '',
+    [string]$BinaryDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$binary = Join-Path $root "LicenseKeyGenerator/bin/$Configuration"
+$binary = if ($BinaryDirectory) { $BinaryDirectory } else { Join-Path $root "LicenseKeyGenerator/bin/$Configuration" }
 if (!$CompilerPath) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
     $CompilerPath = & $vswhere -latest -products '*' -find 'MSBuild/**/Bin/Roslyn/csc.exe' | Select-Object -First 1

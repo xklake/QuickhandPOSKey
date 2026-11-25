@@ -42,13 +42,25 @@ namespace LicenseGenerator
             }
         }
 
-        //产生本地的一个文件
+        // Keep customer output outside the installation directory.
         private void m_GenerateFile_Click(object sender, EventArgs e)
         {
             try
             {
-                GenerateLicenseFile(Path.Combine(Application.StartupPath, EncrptyFile.LicenseFileName));
-                MessageBox.Show("License generated", "Information");
+                using (var dialog = new SaveFileDialog
+                {
+                    Title = "Save legacy customer license",
+                    Filter = "Legacy license (license.key)|*.key",
+                    FileName = EncrptyFile.LicenseFileName,
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    OverwritePrompt = true
+                })
+                {
+                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                    SignedLicenseIssuer.RequirePrivateLocation(dialog.FileName);
+                    GenerateLicenseFile(dialog.FileName);
+                    MessageBox.Show(this, "License saved to:\n" + dialog.FileName, "Information");
+                }
             }
             catch (Exception ex)
             {

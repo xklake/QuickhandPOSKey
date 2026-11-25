@@ -11,6 +11,23 @@
 
 已编译程序为 `LicenseKeyGenerator/bin/Release/LicenseKeyGenerator.exe`。
 
+## 安装包
+
+首次独立安装版为 **1.0.0.0**，替代从旧工程带来的历史文件版本号。安装包版本随主程序的 `AssemblyFileVersion` 更新。
+
+- 制作安装包：双击根目录的 **Build installer.cmd**，自动编译 Release、运行检查并调用 Inno Setup；完成后打开 `Output` 文件夹。不需要手动输入命令。
+- 已安装 Inno Setup 的开发人员也可以在 Release 编译完成后打开 `Installer/LicenseKeyGenerator.iss`，直接编译。建议使用一键脚本，避免误打包旧的 Release 文件。
+- 输出文件为 `Output/LicenseKeyGenerator-Setup-版本号.exe`，同时生成 SHA-256 校验值及文件清单。构建使用独立目录，不覆盖当前正在运行的开发版程序。
+- 运行安装包后，会为当前 Windows 用户安装程序并创建开始菜单入口；桌面快捷方式默认勾选。目标电脑不需要 Visual Studio、Inno Setup、POS 或 MySQL，只需要 Windows 10/11 和 .NET Framework 4.8 或兼容更新版本。
+- 后续关闭授权工具并运行新版安装包即可覆盖升级。使用固定 AppId 和安装范围，保留原安装目录及用户设置；不允许用旧版本覆盖新版本。这里是手动安装包升级，未增加联网自动更新。
+- 安装包按明确文件名单收录主程序、旧机器码工具、两份 DLL 和使用说明，不收录私钥、密码、客户授权、签发记录、测试图片或调试符号。安装及卸载都不删除 `%LocalAppData%\QuickhandPOS\LicenseIssuer` 中的原有配置。
+
+安装后的操作说明位于开始菜单 **Quickhand POS LicenseKeyGenerator → Instructions**。旧授权的生成按钮现在弹出“另存为”，请将客户文件保存到专门的客户资料目录。
+
+未配置 Windows 代码签名证书，因此当前安装包没有 Authenticode 签名。此签名与授权 PFX 的用途不同，不要使用授权私钥给安装包签名。
+
+开发人员可运行 `Scripts/Test-Installer.ps1 -BinaryDirectory <本次打包编译目录>` 验证安装、覆盖升级、防降级及卸载；测试使用单独 AppId、不创建快捷方式或卸载注册项，只向 `TestResults` 的独立目录安装。
+
 ## 首次打开
 
 在 **First-time setup** 中点击 **Use existing key...**，选择原来的 PFX 并输入密码。已有配置通常会自动读取。本次拆分不需要重新创建密钥。

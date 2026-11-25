@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LicenseKeyGenerator 使用说明</title>
+<style>body{font:18px/1.7 "Segoe UI","Microsoft YaHei",sans-serif;color:#172c42;background:#f2f6fc;margin:0}main{max-width:880px;margin:32px auto;padding:32px;background:white;border:1px solid #cbd8e8;border-radius:10px}h1{color:#0078d4;font-size:30px}h2{font-size:23px;border-bottom:1px solid #dbe5f1;padding-bottom:8px}code{background:#edf3fa;padding:2px 5px;overflow-wrap:anywhere}li{margin:9px 0}.note{background:#e7f2ff;padding:16px;border-left:4px solid #0078d4}small{font-size:16px}</style>
+<main><h1>Quickhand POS 授权工具</h1><p>LicenseKeyGenerator · 厂商／内部操作人员使用</p>
+<p class="note">本安装包只安装授权工具，不安装 POS、数据库或客户数据。已有签名密钥可以继续使用，不要因为升级工具而重新创建密钥。</p>
+<h2>1. 安装和打开</h2><ol><li>在实际使用授权工具的 Windows 用户下运行安装包，按提示完成安装。</li><li>从桌面或开始菜单打开 <strong>LicenseKeyGenerator</strong>。</li><li>程序需要 .NET Framework 4.8 或更新的兼容版本；缺少时安装程序会提示。</li></ol>
+<h2>2. 首次设置</h2><ol><li>打开 <strong>First-time setup</strong>，输入密钥密码。</li><li>已有密钥：点击 <strong>Use existing key...</strong>，选择原来的 <code>.pfx</code>。已有路径配置通常自动读取。</li><li>没有密钥：填写至少 16 字符的密码及确认密码，点击 <strong>Create new key...</strong>。保存在源码仓库和程序安装目录之外，并备份 PFX、密码及同目录的 <code>license-issuance.jsonl</code>。</li><li>只有首次使用新密钥时，才需要由开发人员选择 POS 源码目录，点击 <strong>Configure POS key</strong> 并重新构建、部署 POS。日常签发无需 POS 源码和 Inno Setup。</li></ol>
+<h2>3. 日常生成授权</h2><ol><li>客户在 POS 的授权页面点击 <strong>Export request</strong>，将请求 JSON 发给操作人员。</li><li>打开 <strong>Generate license</strong>，点击 <strong>Load request...</strong>。</li><li>核对 Customer ID、Store ID 和购买功能；输入密钥密码。</li><li>勾选已核对购买权益，点击 <strong>Generate license</strong>，选择文件保存位置。</li><li>仅把生成的 <code>.qhlic</code> 文件交给客户。客户通过 <strong>Import license</strong> 导入。</li></ol>
+<h2>4. 旧客户</h2><p><strong>Legacy...</strong> 保留旧授权生成入口。生成文件时会弹出“另存为”；选择客户资料目录，保存 <code>license.key</code>。开始菜单中的 <strong>Legacy machine code</strong> 用于显示旧版机器码。</p>
+<h2>5. 更新与卸载</h2><p>先关闭两个工具，再运行新版安装包。安装范围固定为当前 Windows 用户，默认沿用原安装目录。安装包只替换程序文件，不重建密钥或删除签发记录。</p><p>设置保存在 <code>%LocalAppData%\QuickhandPOS\LicenseIssuer</code>。卸载保留此目录及外部保存的密钥、授权、签发记录；请自行妥善备份。此版本支持安装包覆盖升级，未提供联网自动更新。</p>
+<p class="note">不要将 PFX、密钥密码、完整签发历史或这个厂商工具发给客户。授权 PFX 密钥与 POS 升级包的签名密钥是两套不同的用途。</p>
+<h2>常见问题</h2><ul><li><strong>客户请求不是签名密钥：</strong>请求 JSON 用 Load request，PFX 用 Use existing key。</li><li><strong>客户提示未知公钥：</strong>先更新客户 POS，使其信任该密钥；不能靠重新安装厂商工具解决。</li><li><strong>Build installer 找不到 POS 源码：</strong>该按钮用于构建 POS 安装包；请另行选择 POS 源码。日常生成授权无需使用它。</li></ul><small>说明更新：2026-11-25</small></main></html>

@@ -16,7 +16,12 @@ namespace LicenseGenerator
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(args.Contains("--legacy") ? (Form)new License() : new SignedLicenseForm());
+            // Inno checks this marker before replacing or uninstalling a running tool.
+            using (var running = new System.Threading.Mutex(false, @"Local\QuickhandPOS-LicenseKeyGenerator"))
+            {
+                Application.Run(args.Contains("--legacy") ? (Form)new License() : new SignedLicenseForm());
+                GC.KeepAlive(running);
+            }
         }
     }
 }
