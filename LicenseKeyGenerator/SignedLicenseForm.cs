@@ -20,18 +20,27 @@ namespace LicenseGenerator
         private string licenseId = "", replaces = "", reason = "", appDevice = "", outputFolder = "", operatorName = Environment.UserName;
         private int revision = 1;
         private bool appFull;
-        private readonly string profilePath;
+        private string profilePath;
+        private LicenseStorage storage;
+        private readonly bool rememberLocation;
+        private readonly TextBox dataFolder = Box();
 
-        public SignedLicenseForm() : this(IssuerWorkspace.ProfilePath) { }
-        public SignedLicenseForm(string preferencesPath)
+        public SignedLicenseForm() : this(null, LicenseStorage.DefaultRoot) { }
+        // Explicit preferences keep automated checks and portable callers isolated.
+        public SignedLicenseForm(string preferencesPath) : this(preferencesPath, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(preferencesPath)), "license-data")) { }
+        public SignedLicenseForm(string preferencesPath, string dataRoot)
         {
-            profilePath = preferencesPath;
+            storage = new LicenseStorage(dataRoot); rememberLocation = preferencesPath == null;
+            profilePath = preferencesPath ?? storage.ProfilePath;
             Text = "Quickhand POS - License issuer"; Font = new Font("Segoe UI", 12F);
             BackColor = Color.White; ForeColor = Color.FromArgb(25, 35, 45); StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.None; ClientSize = new Size(980, 670); MinimumSize = new Size(900, 650);
             var daily = Page("Generate license"); var setup = Page("First-time setup"); tabs.TabPages.Add(daily); tabs.TabPages.Add(setup);
             var form = Rows(daily);
-            Wide(form, requestLabel, 44); Pair(form, "Customer ID", customer, "Store ID", store); Wide(form, identityLabel, 28);
+            customer.Name = "CustomerId"; store.Name = "StoreId";
+            customer.Font = store.Font = new Font("Consolas", 12F);
+            SetPartyIds(LicensePartyIds.Create());
+            Wide(form, requestLabel, 44); Wide(form, PartyIdRow(), 76); Wide(form, identityLabel, 28);
             Pair(form, "Key password", password, "Signing key", keyLabel);
             Wide(form, Label("2. Choose purchased features. Permanent POS does not expire."), 28);
             foreach (var item in new[] { Tuple.Create("POS", pos), Tuple.Create("APP", app), Tuple.Create("Web", web), Tuple.Create("Payment", payment) }) Single(form, item.Item1, item.Item2, 46);
@@ -44,6 +53,8 @@ namespace LicenseGenerator
 
             var first = Rows(setup);
             Wide(first, Label("Set up once. Customers receive only the generated .qhlic file."), 28);
+            dataFolder.ReadOnly = true; dataFolder.Text = storage.Root; Single(first, "License data folder", dataFolder, 36);
+            Wide(first, ActionRow(Button("Open data folder", false, (s, e) => Run(() => { storage.EnsureFolders(); System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(storage.Root) { UseShellExecute = true }); })), Button("Choose data folder...", false, ChooseDataFolder)), 52);
             Wide(first, Label("1. Create a key or use your existing key. Keep it outside the source folder."), 28);
             Pair(first, "Key password", setupPassword, "Confirm new password", confirmPassword);
             Wide(first, ActionRow(Button("Use existing key...", false, UseKey), Button("Create new key...", true, CreateKey)), 54);
@@ -57,7 +68,7 @@ namespace LicenseGenerator
             var footer = new Panel { Dock = DockStyle.Bottom, Height = 74, BackColor = Color.FromArgb(234, 244, 253) };
             var issue = Button("Generate license", true, Issue); var load = Button("Load request...", false, LoadRequest);
             var advanced = Button("Advanced...", false, (s, e) => Advanced());
-            var footerButtons = new[] { Button("Close", false, (s, e) => Close()), Button("Legacy...", false, (s, e) => { using (var old = new License()) old.ShowDialog(this); }), advanced, load, issue };
+            var footerButtons = new[] { Button("Close", false, (s, e) => Close()), Button("Legacy...", false, (s, e) => { using (var old = new License(storage.Root)) old.ShowDialog(this); }), advanced, load, issue };
             foreach (var button in footerButtons) button.Width = 164;
             footer.Controls.Add(ActionRow(footerButtons));
             var feedback = new Panel { Dock = DockStyle.Bottom, Height = 86, Padding = new Padding(16, 0, 16, 0), BackColor = Color.FromArgb(245, 249, 253) };
@@ -68,17 +79,51 @@ namespace LicenseGenerator
             message.Text = "Back up your key, password and issuance records. Passwords are not saved by this tool.";
             try
             {
-                var saved = IssuerWorkspace.LoadProfile(profilePath);
+                var saved = IssuerWorkspace.LoadProfile(rememberLocation && !File.Exists(profilePath) ? LicenseStorage.LegacyProfilePath : profilePath);
                 keyPath.Text = (string)saved["keyPath"] ?? ""; sourceRoot.Text = (string)saved["sourceRoot"] ?? "";
                 outputFolder = (string)saved["outputFolder"] ?? "";
             }
             catch (Exception) { message.Text = "Saved setup could not be read. Select your existing key in First-time setup."; }
             if (string.IsNullOrEmpty(sourceRoot.Text)) sourceRoot.Text = IssuerWorkspace.FindSourceRoot(AppDomain.CurrentDomain.BaseDirectory);
-            RefreshKey(); if (string.IsNullOrEmpty(keyPath.Text)) tabs.SelectedIndex = 1;
+            Run(RefreshKey); if (string.IsNullOrEmpty(keyPath.Text)) tabs.SelectedIndex = 1;
         }
 
-        private void RefreshKey() { keyLabel.Text = string.IsNullOrEmpty(keyPath.Text) ? "Open First-time setup" : Path.GetFileName(keyPath.Text); }
-        private void SavePreferences() { IssuerWorkspace.SaveProfile(profilePath, keyPath.Text, sourceRoot.Text, outputFolder); }
+        private void RefreshKey()
+        {
+            keyLabel.Text = string.IsNullOrEmpty(keyPath.Text) ? "Open First-time setup" : Path.GetFileName(keyPath.Text);
+            // A request may be loaded before the operator selects an existing key.
+            if (request != null && !string.IsNullOrEmpty((string)request["currentLicenseId"]) &&
+                (string.IsNullOrWhiteSpace(customer.Text) || string.IsNullOrWhiteSpace(store.Text)))
+            {
+                var known = IssuerWorkspace.FindPartyIds(keyPath.Text, (string)request["currentLicenseId"]);
+                if (known != null)
+                {
+                    if (string.IsNullOrWhiteSpace(customer.Text)) customer.Text = known.CustomerId;
+                    if (string.IsNullOrWhiteSpace(store.Text)) store.Text = known.StoreId;
+                }
+            }
+        }
+        private void SavePreferences()
+        {
+            storage.EnsureFolders(); IssuerWorkspace.SaveProfile(profilePath, keyPath.Text, sourceRoot.Text, outputFolder);
+            if (rememberLocation) storage.RememberLocation();
+        }
+        private void ChooseDataFolder(object sender, EventArgs args)
+        {
+            using (var folder = new FolderBrowserDialog { Description = "Choose the QuickhandLicenseKeys data folder (outside source and program folders)", SelectedPath = storage.Root })
+                if (folder.ShowDialog(this) == DialogResult.OK) Run(() =>
+                {
+                    var selected = new LicenseStorage(folder.SelectedPath);
+                    // Open the selected workspace, rather than silently moving its files or overwriting its profile.
+                    var saved = IssuerWorkspace.LoadProfile(selected.ProfilePath); selected.EnsureFolders();
+                    storage = selected; profilePath = selected.ProfilePath; dataFolder.Text = storage.Root;
+                    keyPath.Text = (string)saved["keyPath"] ?? ""; sourceRoot.Text = (string)saved["sourceRoot"] ?? "";
+                    outputFolder = (string)saved["outputFolder"] ?? "";
+                    password.Clear(); setupPassword.Clear(); confirmPassword.Clear(); confirmed.Checked = false;
+                    RefreshKey(); SavePreferences();
+                    message.Text = "Data folder selected. Use existing key to copy a key and its records here. Original files are kept.";
+                });
+        }
         private void Run(Action action)
         {
             try { action(); }
@@ -92,13 +137,8 @@ namespace LicenseGenerator
                 if (setupPassword.Text != confirmPassword.Text) throw new InvalidDataException("The two new-key passwords do not match.");
                 if (setupPassword.Text.Length < 16) throw new InvalidDataException("Use at least 16 characters for the new signing-key password.");
                 if (!string.IsNullOrEmpty(keyPath.Text) && MessageBox.Show(this, "A key is already selected. A new key requires a POS update. Create another key?", "Create new key", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-                using (var dialog = new SaveFileDialog { Filter = "Signing key (*.pfx)|*.pfx", FileName = "license-signing.pfx", InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) })
-                {
-                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                    SignedLicenseIssuer.CreateKey(dialog.FileName, setupPassword.Text);
-                    keyPath.Text = dialog.FileName; password.Text = setupPassword.Text; RefreshKey(); SavePreferences();
-                    message.Text = "Key created. Back up the PFX and password. Next: Configure POS key, then build POS.";
-                }
+                keyPath.Text = storage.CreateKey(setupPassword.Text); password.Text = setupPassword.Text; RefreshKey(); SavePreferences();
+                message.Text = "Key saved in 01_SigningKeys; public export in 02_PublicKeys. Next: Configure POS key, then build POS.";
             });
         }
 
@@ -109,17 +149,8 @@ namespace LicenseGenerator
                 using (var dialog = new OpenFileDialog { Filter = "Signing key (*.pfx)|*.pfx", CheckFileExists = true })
                 {
                     if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                    IssuerWorkspace.ReadPublicKey(dialog.FileName, setupPassword.Text);
-                    string selected = dialog.FileName; bool inSource = false;
-                    try { SignedLicenseIssuer.RequirePrivateLocation(selected); } catch (InvalidDataException) { inSource = true; }
-                    if (inSource)
-                    {
-                        MessageBox.Show(this, "This key is inside a source repository. Select an empty private folder to copy the key and issuance records. Originals are kept.", "Private signing folder", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        using (var folder = new FolderBrowserDialog { Description = "Choose an empty private folder outside the source repository" })
-                        { if (folder.ShowDialog(this) != DialogResult.OK) return; selected = IssuerWorkspace.ImportKey(selected, folder.SelectedPath, setupPassword.Text); }
-                    }
-                    keyPath.Text = selected; password.Text = setupPassword.Text; RefreshKey(); SavePreferences();
-                    message.Text = "Existing key selected. Next: Configure POS key. Back up and use this private folder for future issuance.";
+                    keyPath.Text = storage.ImportKey(dialog.FileName, setupPassword.Text); password.Text = setupPassword.Text; RefreshKey(); SavePreferences();
+                    message.Text = "Existing key and issuance records retained in the data folder. Original files are kept. Back up the whole folder.";
                 }
             });
         }
@@ -150,17 +181,47 @@ namespace LicenseGenerator
                     if (dialog.ShowDialog(this) != DialogResult.OK) return;
                     if (new FileInfo(dialog.FileName).Length > LicenseJson.MaximumBytes) throw new InvalidDataException("The customer request is too large.");
                     var loaded = SignedLicenseIssuer.ReadRequest(File.ReadAllText(dialog.FileName, LicenseJson.Utf8));
-                    var draft = SignedLicenseIssuer.NewPayload(loaded, "pending", "pending", DateTime.UtcNow);
-                    string loadedId = (string)draft["licenseId"]; int loadedRevision = (int)draft["revision"];
-                    if (File.Exists(keyPath.Text)) loadedRevision = IssuerWorkspace.NextRevision(keyPath.Text, loadedId, loadedRevision);
-                    request = loaded; licenseId = loadedId; revision = loadedRevision;
-                    replaces = reason = appDevice = ""; appFull = false; customer.Clear(); store.Clear(); confirmed.Checked = false;
-                    // Never carry purchased rights from a different customer's request.
-                    trial.Checked = false; pos.Reset(true); app.Reset(false); web.Reset(false); payment.Reset(false); terminals.Value = 0;
-                    requestLabel.Text = "Request loaded: " + Path.GetFileName(dialog.FileName) + Environment.NewLine + "Computer: " + (string)request["installationId"];
-                    RefreshIdentity(); message.Text = "Enter customer/store IDs and purchased features. A new key is not needed for each customer.";
+                    ApplyRequest(loaded, Path.GetFileName(dialog.FileName));
                 }
             });
+        }
+        private void ApplyRequest(JObject loaded, string name)
+        {
+            // Finish validation/history reads before replacing the visible draft.
+            var draft = SignedLicenseIssuer.NewPayload(loaded, "pending", "pending", DateTime.UtcNow);
+            bool renewal = !string.IsNullOrEmpty((string)loaded["currentLicenseId"]);
+            bool same = request != null && (string)request["installationId"] == (string)loaded["installationId"] &&
+                (string)request["deviceBinding"] == (string)loaded["deviceBinding"] &&
+                (string)request["currentLicenseId"] == (string)loaded["currentLicenseId"];
+            string loadedId = same ? licenseId : (string)draft["licenseId"];
+            int loadedRevision = (int)draft["revision"];
+            if (File.Exists(keyPath.Text)) loadedRevision = IssuerWorkspace.NextRevision(keyPath.Text, loadedId, loadedRevision);
+            LicensePartyIds ids;
+            if (same || (request == null && !renewal)) ids = new LicensePartyIds(customer.Text, store.Text);
+            else if (renewal) ids = IssuerWorkspace.FindPartyIds(keyPath.Text, loadedId) ?? new LicensePartyIds("", "");
+            else ids = LicensePartyIds.Create();
+            storage.ArchiveRequest(loaded);
+            request = (JObject)loaded.DeepClone(); licenseId = loadedId; revision = loadedRevision;
+            replaces = reason = appDevice = ""; appFull = false; SetPartyIds(ids); confirmed.Checked = false;
+            // Never carry purchased rights from a different customer's request.
+            trial.Checked = false; pos.Reset(true); app.Reset(false); web.Reset(false); payment.Reset(false); terminals.Value = 0;
+            requestLabel.Text = "Request loaded: " + name + Environment.NewLine + "Computer: " + (string)request["installationId"];
+            RefreshIdentity();
+            message.Text = renewal && (string.IsNullOrWhiteSpace(customer.Text) || string.IsNullOrWhiteSpace(store.Text))
+                ? "Renewal: no matching local record. Enter the customer's EXISTING Customer ID and Store ID."
+                : renewal ? "Existing customer/store IDs retained. Check the purchased features before renewing."
+                : "Customer/store IDs are ready and editable. Keep an existing Customer ID when adding another store.";
+        }
+        private void SetPartyIds(LicensePartyIds ids) { customer.Text = ids.CustomerId; store.Text = ids.StoreId; }
+        private Control PartyIdRow()
+        {
+            var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = Padding.Empty };
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            row.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            row.Controls.Add(Label("Customer ID (editable)"), 0, 0); row.Controls.Add(Label("Store ID (editable)"), 1, 0);
+            customer.Margin = new Padding(3, 2, 12, 8); store.Margin = new Padding(3, 2, 3, 8);
+            row.Controls.Add(customer, 0, 1); row.Controls.Add(store, 1, 1);
+            return row;
         }
         private void RefreshIdentity() { identityLabel.Text = "License: " + licenseId + "    Revision: " + revision; }
 
@@ -178,7 +239,13 @@ namespace LicenseGenerator
                 {
                     Guid parsed;
                     if (!Guid.TryParseExact(id.Text.Trim(), "D", out parsed) || parsed == Guid.Empty) { MessageBox.Show(dialog, "Load a request first, or enter a valid existing license ID."); return; }
-                    licenseId = id.Text.Trim(); revision = (int)rev.Value; replaces = replace.Text.Trim(); reason = why.Text.Trim(); operatorName = op.Text.Trim(); appDevice = device.Text.Trim(); appFull = full.Checked; confirmed.Checked = false; RefreshIdentity(); dialog.Close();
+                    try
+                    {
+                        if (licenseId != id.Text.Trim() || replaces != replace.Text.Trim())
+                            SetPartyIds(IssuerWorkspace.FindPartyIds(keyPath.Text, string.IsNullOrWhiteSpace(replace.Text) ? id.Text.Trim() : replace.Text.Trim()) ?? new LicensePartyIds("", ""));
+                        licenseId = id.Text.Trim(); revision = (int)rev.Value; replaces = replace.Text.Trim(); reason = why.Text.Trim(); operatorName = op.Text.Trim(); appDevice = device.Text.Trim(); appFull = full.Checked; confirmed.Checked = false; RefreshIdentity(); dialog.Close();
+                    }
+                    catch (Exception ex) { MessageBox.Show(dialog, ex.Message); }
                 }));
                 footer.Dock = DockStyle.Bottom; footer.Height = 76; dialog.Controls.Add(footer); dialog.ShowDialog(this);
             }
@@ -192,19 +259,26 @@ namespace LicenseGenerator
                 if (string.IsNullOrWhiteSpace(customer.Text) || string.IsNullOrWhiteSpace(store.Text)) throw new InvalidDataException("Enter the customer ID and store ID.");
                 if (string.IsNullOrEmpty(keyPath.Text)) { tabs.SelectedIndex = 1; throw new InvalidDataException("Complete First-time setup using a signing key (.pfx)."); }
                 if (!confirmed.Checked) throw new InvalidDataException("Check the purchased features and tick the confirmation first.");
-                SignedLicenseIssuer.RequirePrivateLocation(keyPath.Text); IssuerWorkspace.ReadPublicKey(keyPath.Text, password.Text);
+                keyPath.Text = storage.ImportKey(keyPath.Text, password.Text); RefreshKey();
                 revision = IssuerWorkspace.NextRevision(keyPath.Text, licenseId, revision); RefreshIdentity();
                 var draft = SignedLicenseIssuer.NewPayload(request, customer.Text.Trim(), store.Text.Trim(), DateTime.UtcNow);
                 draft["licenseId"] = licenseId; draft["revision"] = revision; draft["paymentTerminals"] = payment.IsEnabled ? (int)terminals.Value : 0;
                 draft["replacesLicenseId"] = replaces; draft["changeReason"] = reason; draft["edition"] = trial.Checked ? "trial" : "standard";
                 draft["pos"] = pos.Value; draft["app"] = app.Value; draft["web"] = web.Value; draft["payment"] = payment.Value;
                 draft["appFullAccess"] = app.IsEnabled && appFull; draft["appDeviceId"] = app.IsEnabled ? appDevice : "";
-                using (var dialog = new SaveFileDialog { Filter = "Customer license (*.qhlic)|*.qhlic", FileName = "license-" + licenseId + "-r" + revision + ".qhlic", InitialDirectory = outputFolder })
+                string archive = storage.LicensePath(draft);
+                using (var dialog = new SaveFileDialog { Filter = "Customer license (*.qhlic)|*.qhlic", FileName = Path.GetFileName(archive), InitialDirectory = Path.GetDirectoryName(archive) })
                 {
                     if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                    SignedLicenseIssuer.IssueToFile(draft, keyPath.Text, password.Text, dialog.FileName, operatorName, true);
+                    SignedLicenseIssuer.RequirePrivateLocation(dialog.FileName);
+                    bool copy = !Path.GetFullPath(dialog.FileName).Equals(archive, StringComparison.OrdinalIgnoreCase);
+                    if (copy && File.Exists(dialog.FileName)) throw new IOException("The export file already exists. Choose a new filename.");
+                    SignedLicenseIssuer.IssueToFile(draft, keyPath.Text, password.Text, archive, operatorName, true);
                     outputFolder = Path.GetDirectoryName(dialog.FileName); confirmed.Checked = false;
-                    message.Text = "License created: " + dialog.FileName + Environment.NewLine + "Send only this .qhlic file. The customer clicks Import license in POS.";
+                    message.Text = "License archived in 04_IssuedLicenses under this customer/store. Send only the .qhlic file.";
+                    if (copy)
+                        try { File.Copy(archive, dialog.FileName, false); message.Text += " Export copy saved."; }
+                        catch (Exception) { message.Text = "License created and archived, but export copy failed. Retrieve it from: " + archive; }
                     try { SavePreferences(); } catch (Exception) { message.Text += " Preferences could not be saved; the license was created."; }
                 }
             });

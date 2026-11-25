@@ -20,6 +20,7 @@ $exe = Join-Path $output 'StandaloneChecks.exe'
 $arguments = @('/nologo','/target:exe',('/out:'+$exe),'/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Xml.dll','/r:System.Security.dll')
 foreach ($name in @('LicenseKeyGenerator.exe','LicenseKeyGenerator.Core.dll','Newtonsoft.Json.dll')) { $arguments += '/r:'+(Join-Path $output $name) }
 $arguments += Join-Path $root 'Tests/StandaloneChecks.cs'
+$arguments += Join-Path $root 'Tests/StorageChecks.cs'
 & $CompilerPath @arguments
 if ($LASTEXITCODE -ne 0) { throw 'Standalone checks compilation failed.' }
 Copy-Item -LiteralPath (Join-Path $binary 'LicenseKeyGenerator.exe.config') -Destination ($exe+'.config')

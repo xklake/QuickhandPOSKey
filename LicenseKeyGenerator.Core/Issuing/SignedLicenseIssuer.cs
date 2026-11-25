@@ -22,8 +22,10 @@ namespace LicenseGenerator
                 using (var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(20)))
                 {
                     var publicKey = new JObject { ["keyId"] = SignedLicenseVerifier.KeyId(rsa), ["publicKeyXml"] = rsa.ToXmlString(false) };
-                    string publicPath = pfxPath + ".public.json";
+                    string publicPath = LicenseStorage.PublicExportPath(pfxPath);
                     if (File.Exists(pfxPath) || File.Exists(publicPath)) throw new IOException("The key or public-key export already exists. Choose a new filename.");
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(pfxPath)));
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(publicPath)));
                     WriteNew(pfxPath, certificate.Export(X509ContentType.Pfx, password));
                     WriteNew(publicPath, LicenseJson.Utf8.GetBytes(LicenseJson.Compact(publicKey)));
                 }
@@ -96,7 +98,8 @@ namespace LicenseGenerator
             string content = Sign(draft, pfxPath, password);
             // Serialize issuance and audit on the vendor workstation. Reserve each ID/revision
             // in the append-only journal BEFORE publishing; a crash burns that revision safely.
-            string journal = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(pfxPath)), "license-issuance.jsonl");
+            string journal = LicenseStorage.JournalPath(pfxPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(journal));
             using (var file = new FileStream(journal, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
             {
                 string id = (string)draft["licenseId"]; int revision = (int)draft["revision"];

@@ -11,7 +11,7 @@ namespace LicenseGenerator
     // Vendor workstation only. No secrets are saved in the profile or client source.
     public static class IssuerWorkspace
     {
-        public static string ProfilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "QuickhandPOS", "LicenseIssuer", "profile.json");
+        public static string ProfilePath => new LicenseStorage(LicenseStorage.DefaultRoot).ProfilePath;
 
         public static JObject ReadPublicKey(string pfxPath, string password)
         {
@@ -37,7 +37,7 @@ namespace LicenseGenerator
             if (Directory.Exists(destinationFolder) && Directory.GetFileSystemEntries(destinationFolder).Length != 0)
                 throw new IOException("Choose an empty private folder. Existing keys and issuance records will not be overwritten.");
             Directory.CreateDirectory(destinationFolder);
-            string journal = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source)), "license-issuance.jsonl");
+            string journal = LicenseStorage.JournalPath(source);
             // Lock the original journal while copying, to retain all reserved revisions.
             using (var audit = File.Exists(journal) ? new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.None) : null)
             {
@@ -125,10 +125,37 @@ namespace LicenseGenerator
             finally { if (File.Exists(temp)) File.Delete(temp); }
         }
 
+        public static LicensePartyIds FindPartyIds(string keyPath, string licenseId)
+        {
+            if (string.IsNullOrWhiteSpace(keyPath) || string.IsNullOrWhiteSpace(licenseId)) return null;
+            string journal = LicenseStorage.JournalPath(keyPath);
+            if (!File.Exists(journal)) return null;
+            LicensePartyIds result = null;
+            int latest = 0;
+            using (var file = new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var reader = new StreamReader(file, LicenseJson.Utf8))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    var entry = LicenseJson.Read(line);
+                    if (!string.Equals((string)entry["licenseId"], licenseId, StringComparison.OrdinalIgnoreCase)) continue;
+                    int entryRevision = LicenseJson.Number(entry, "revision", 1, int.MaxValue);
+                    if (entryRevision < latest) continue;
+                    var candidate = new LicensePartyIds(LicenseJson.Text(entry, "customerId"), LicenseJson.Text(entry, "storeId"));
+                    if (entryRevision == latest && result != null &&
+                        (candidate.CustomerId != result.CustomerId || candidate.StoreId != result.StoreId))
+                        throw new InvalidDataException("Conflicting customer/store IDs in the issuance history. Check your records before renewing.");
+                    result = candidate; latest = entryRevision;
+                }
+            }
+            return result;
+        }
+
         public static int NextRevision(string keyPath, string licenseId, int requestedRevision)
         {
             int next = requestedRevision;
-            string journal = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(keyPath)), "license-issuance.jsonl");
+            string journal = LicenseStorage.JournalPath(keyPath);
             if (File.Exists(journal))
                 using (var file = new FileStream(journal, FileMode.Open, FileAccess.Read, FileShare.Read))
                 using (var reader = new StreamReader(file, LicenseJson.Utf8))

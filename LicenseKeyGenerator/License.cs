@@ -8,8 +8,11 @@ namespace LicenseGenerator
 {
     public partial class License : Form
     {
-        public License()
+        private readonly LicenseStorage storage;
+        public License() : this(LicenseStorage.DefaultRoot) { }
+        public License(string dataRoot)
         {
+            storage = new LicenseStorage(dataRoot);
             InitializeComponent();
 
             m_DataPickTime.Value = DateTime.Now.AddYears(1);
@@ -45,26 +48,36 @@ namespace LicenseGenerator
         // Keep customer output outside the installation directory.
         private void m_GenerateFile_Click(object sender, EventArgs e)
         {
+            string archive = null;
             try
             {
+                storage.EnsureFolders();
+                string folder = Path.Combine(storage.Root, LicenseStorage.Licenses, "Legacy", DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                Directory.CreateDirectory(folder);
+                archive = Path.Combine(folder, EncrptyFile.LicenseFileName);
                 using (var dialog = new SaveFileDialog
                 {
                     Title = "Save legacy customer license",
                     Filter = "Legacy license (license.key)|*.key",
                     FileName = EncrptyFile.LicenseFileName,
-                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    InitialDirectory = folder,
                     OverwritePrompt = true
                 })
                 {
                     if (dialog.ShowDialog(this) != DialogResult.OK) return;
                     SignedLicenseIssuer.RequirePrivateLocation(dialog.FileName);
-                    GenerateLicenseFile(dialog.FileName);
+                    bool copy = !Path.GetFullPath(dialog.FileName).Equals(archive, StringComparison.OrdinalIgnoreCase);
+                    if (copy && File.Exists(dialog.FileName)) throw new IOException("The export file already exists. Choose a new filename.");
+                    GenerateLicenseFile(archive);
+                    if (copy) File.Copy(archive, dialog.FileName, false);
                     MessageBox.Show(this, "License saved to:\n" + dialog.FileName, "Information");
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("License was not saved: " + ex.Message, "Error");
+                MessageBox.Show(archive != null && File.Exists(archive)
+                    ? "The license is archived, but exporting failed. Retrieve it from:\n" + archive + "\n" + ex.Message
+                    : "License was not saved: " + ex.Message, "Error");
             }
         }
 

@@ -75,6 +75,7 @@ internal static class StandaloneChecks
             IssuerWorkspace.SaveProfile(profile, pfx, "", temp);
             Check(!File.ReadAllText(profile).Contains(Password), "profile works without POS source and stores only paths");
             Application.EnableVisualStyles();
+            StorageChecks.Run(temp, args[1], pfx, Password, request, draft, Check, Reject);
             using (var form = new SignedLicenseForm(profile))
             {
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-3000, -3000); form.ShowInTaskbar = false;

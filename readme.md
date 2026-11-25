@@ -22,7 +22,7 @@
 - 后续关闭授权工具并运行新版安装包即可覆盖升级。使用固定 AppId 和安装范围，保留原安装目录及用户设置；不允许用旧版本覆盖新版本。这里是手动安装包升级，未增加联网自动更新。
 - 安装包按明确文件名单收录主程序、旧机器码工具、两份 DLL 和使用说明，不收录私钥、密码、客户授权、签发记录、测试图片或调试符号。安装及卸载都不删除 `%LocalAppData%\QuickhandPOS\LicenseIssuer` 中的原有配置。
 
-安装后的操作说明位于开始菜单 **Quickhand POS LicenseKeyGenerator → Instructions**。旧授权的生成按钮现在弹出“另存为”，请将客户文件保存到专门的客户资料目录。
+安装后的操作说明位于开始菜单 **Quickhand POS LicenseKeyGenerator → Instructions**。新版及旧版授权均自动保留归档；“另存为”选择其他位置时会额外导出一份。
 
 未配置 Windows 代码签名证书，因此当前安装包没有 Authenticode 签名。此签名与授权 PFX 的用途不同，不要使用授权私钥给安装包签名。
 
@@ -33,6 +33,27 @@
 在 **First-time setup** 中点击 **Use existing key...**，选择原来的 PFX 并输入密码。已有配置通常会自动读取。本次拆分不需要重新创建密钥。
 
 日常使用 **Generate license**：加载客户请求，核对客户及功能，输入密钥密码，确认购买权益后签发。**Legacy...** 继续支持旧格式客户授权。
+
+## 授权资料目录（1.0.1.0）
+
+开发环境默认使用 solution 所在工程目录的同级目录 `QuickhandLicenseKeys`。本机为 `F:\iphone-ai\QuickhandLicenseKeys`，与 `F:\iphone-ai\QuickhandPOSKey` 并列，不进入 Git 或安装包。
+
+| 子目录 | 保存的内容 |
+| --- | --- |
+| `01_SigningKeys` | 加密的签名私钥 PFX，按 `Key-公钥标识` 区分多把密钥 |
+| `02_PublicKeys` | 对应的公钥导出文件，用于配置 POS 信任 |
+| `03_CustomerRequests` | 客户申请 JSON，按安装码分类，加载时自动归档 |
+| `04_IssuedLicenses` | 已签发授权，按 Customer、Store 分类，再按授权 ID、修订号命名；旧格式在 `Legacy` 内 |
+| `05_IssuanceRecords` | 每把密钥的签发记录，续期及修订号检查依赖此数据 |
+| `06_Settings` | 工具配置，只存路径，不存密码 |
+| `07_PrivateNotes` | 人工保留的私密记录；程序不会自动读取或保存明文密码 |
+| `08_Backups` | 人工迁移备份等资料；不是自动异地备份 |
+
+**First-time setup → Open data folder** 打开当前资料目录；**Choose data folder...** 打开另一份资料目录，原目录不删除，也不自动搬移。需要迁移到另一台电脑时，先关闭工具，复制完整 `QuickhandLicenseKeys`，在新电脑选择这份目录，再用 **Use existing key...** 重新选择其中的 PFX（原配置可能包含旧电脑路径）。导入时保留已有较新的签发历史，有冲突会停止，不会覆盖。
+
+首次运行安装版若没有设置，默认使用“文档\QuickhandLicenseKeys”。`%LocalAppData%\QuickhandPOS\LicenseIssuer\storage-location.json` 只记录资料目录位置。旧 `profile.json` 可继续读取；保存设置后使用 `06_Settings`。升级、卸载不删除外部资料。请另外备份**整个资料目录**；同一把密钥不应在多台电脑上各用一份独立历史同时签发，否则仍可能发生修订号冲突。
+
+新客户默认生成 `CUS-…`、`STR-…` 分组编号，可手动修改，避开 I/L/O 等易混淆字母。每个编号含 128 位系统随机数，跨机器离线碰撞概率极低，并非依赖单机流水号；手工输入相同编号仍可能重复。给同一客户新增门店时沿用其 Customer ID。续期从签发历史读取原编号；找不到历史时必须填写原编号，不自动换号。
 
 POS 源码目录只用于配置公钥和构建 POS 安装包；日常签发不需要这个目录。请阅读 [分离说明](docs/分离说明.md) 了解两个仓库的关系及兼容性测试方式。
 

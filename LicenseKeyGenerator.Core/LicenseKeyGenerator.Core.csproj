@@ -38,6 +38,8 @@
   <ItemGroup>
     <Compile Include="Issuing\IssuerWorkspace.cs" />
     <Compile Include="Issuing\SignedLicenseIssuer.cs" />
+    <Compile Include="Issuing\LicensePartyIds.cs" />
+    <Compile Include="Issuing\LicenseStorage.cs" />
     <Compile Include="Legacy\EncrptyFile.cs" />
     <Compile Include="Legacy\HardwareQuery.cs" />
     <Compile Include="Legacy\LegacyLicenseStore.cs" />
