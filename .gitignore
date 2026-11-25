@@ -1,0 +1,24 @@
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+packages/
+TestResults/
+# Private signing material and customer authorization data never enter Git.
+*.pfx
+*.p12
+*.pem
+*.key
+*.key.*
+*.qhlic
+*.public.json
+license-issuance.jsonl
+license-request*.json
+profile.json
+build-tools.json
+QuickhandLicenseKeys/
+PrivateKeys/
+key.txt
+password.txt
+*.pfx.*
